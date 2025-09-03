@@ -54,17 +54,21 @@ static inline void x_closedir(folder_list_t dir);
 // Open a file from a null-terminated string specifying the pathname
 static inline file_t x_open(const char* name);
 
+// Move a file atomically
+static inline bool x_move(const char* old_name, const char* new_name);
+
+
 // Get the size of a file in bytes
-static inline size_t x_getsize(file_t fd);
+static inline uint64_t x_getsize(file_t fd);
 
 // Read `count` bytes from fd, starting at offset `start`. Data is written to `buf`, which is expected to be valid, writable memory for at least `count` bytes. The number of bytes actually read is returned, which may be less than the number of bytes requested if the end of the file was found, or 0 if the file could not be read from
-static inline size_t x_read(file_t fd, void* buf, size_t start, size_t count);
+static inline size_t x_read(file_t fd, void* buf, uint64_t start, size_t count);
 
 // Write `count` bytes to fd, starting at offset `start`. Data is read from `buf`, which is expected to be valid, readable memory for at least `count` bytes. The number of bytes actually written is returned, which may be less than the number of bytes requested under special circumstances (old systems, disk full), or 0 if the file could not be written to
-static inline size_t x_write(file_t fd, const void* buf, size_t start, size_t count);
+static inline size_t x_write(file_t fd, const void* buf, uint64_t start, size_t count);
 
 // Set the size of a file in bytes. If the size is smaller than the current size, the file is truncated, otherwise it is expanded and the additional bytes are all set to 0
-static inline bool x_setsize(file_t fd, size_t sz);
+static inline bool x_setsize(file_t fd, uint64_t sz);
 
 // Close a file. The file_t becomes invalid before the function returns and new calls to x_open may create file_t handles that compare == to this one. It is best practice to completely forget the old file handle and never assume anything about it after it has been closed, much like you would with a pointer that has been free()'d
 static inline void x_close(file_t fd);
@@ -74,7 +78,7 @@ static inline void x_close(file_t fd);
 // If copy == true, the memory region will be populated with a copy of the file's contents, and any modifications will not be written back to the file, and effectively becomes private memory much like x_pagealloc(). It is then safe to x_read()/x_write() the region, as it will not affect the mapped memory in any way
 // In either case, the returned pointer should be freed with x_pagefree()
 // On failure, 0 (NULL) is returned
-static inline void* x_mapfile(file_t fd, size_t off, size_t sz, bool copy);
+static inline void* x_mapfile(file_t fd, uint64_t off, size_t sz, bool copy);
 
 // Allocate `sz` pages (`sz * X_PAGE_SIZE` bytes) of memory, with all bytes initially set to 0
 static inline void* x_pagealloc(size_t sz);
@@ -98,19 +102,19 @@ static inline file_t x_open(const char* name){
 	NULL);
 }
 
-static inline size_t x_getsize(file_t fd){
+static inline uint64_t x_getsize(file_t fd){
 	LARGE_INTEGER li;
 	if (!GetFileSizeEx(fd, &li)) return 0;
-	return (size_t) li.QuadPart;
+	return li.QuadPart;
 }
 
-static inline size_t x_read(file_t fd, void* buf, size_t start, size_t count){
+static inline size_t x_read(file_t fd, void* buf, uint64_t start, size_t count){
 	DWORD bytesRead;
 	OVERLAPPED overlapped = {0};
 	overlapped.Offset = (DWORD) start;
+	overlapped.OffsetHigh = (DWORD) (start >> 32);
 	char* _buf = buf;
 	#if SIZE_T_MAX > 0xFFFFFFFF
-	overlapped.OffsetHigh = (DWORD) (start >> 32);
 	if(count > 0xFFFFFFFF){
 		// Do not "fix" what you do not understand
 		// Ignorance sees bad code, but fast code is not for the ignorant
@@ -131,13 +135,13 @@ static inline size_t x_read(file_t fd, void* buf, size_t start, size_t count){
 	return ReadFile(fd, _buf, (DWORD) count, &bytesRead, &overlapped) ? bytesRead : 0;
 }
 
-static inline size_t x_write(file_t fd, const void* buf, size_t start, size_t count){
+static inline size_t x_write(file_t fd, const void* buf, uint64_t start, size_t count){
 	DWORD bytesWritten;
 	OVERLAPPED overlapped = {0};
 	overlapped.Offset = (DWORD) start;
+	overlapped.OffsetHigh = (DWORD) (start >> 32);
 	const char* _buf = buf;
 	#if SIZE_T_MAX > 0xFFFFFFFF
-	overlapped.OffsetHigh = (DWORD) (start >> 32);
 	if(count > 0xFFFFFFFF){
 		// See the comment in the x_read() implementation
 		do{
@@ -155,15 +159,17 @@ static inline size_t x_write(file_t fd, const void* buf, size_t start, size_t co
 	return WriteFile(fd, _buf, (DWORD) count, &bytesWritten, &overlapped) ? bytesWritten : 0;
 }
 
-static inline bool x_setsize(file_t fd, size_t sz){
+static inline bool x_setsize(file_t fd, uint64_t sz){
 	FILE_END_OF_FILE_INFO eof;
 	eof.EndOfFile.QuadPart = sz;
 	return SetFileInformationByHandle(fd, FileEndOfFileInfo, &eof, sizeof(eof));
 }
 
+static inline bool x_flush(file_t fd){ return FlushFileBuffers(fd); }
+
 static inline void x_close(file_t fd){ CloseHandle(fd); }
 
-static inline void* x_mapfile(file_t fd, size_t off, size_t sz, bool copy){
+static inline void* x_mapfile(file_t fd, uint64_t off, size_t sz, bool copy){
 	HANDLE hMap = CreateFileMapping(fd, NULL, copy ? PAGE_WRITECOPY : PAGE_READWRITE, 0, 0, NULL);
 	if (!hMap) return 0;
 	void* ptr = MapViewOfFile(hMap, copy ? FILE_MAP_COPY : FILE_MAP_READ|FILE_MAP_WRITE, off >> 16, off << 16, sz << 16);
@@ -236,37 +242,44 @@ static inline void x_closedir(folder_list_t dir){
 	free(dir);
 }
 
+static inline bool x_move(const char* old_name, const char* new_name){
+	return MoveFile(old_name, new_name);
+}
+
 #else
 #define _FILE_OFFSET_BITS 64
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdio.h>
 
 // Open a file from a null-terminated string specifying the pathname
 static inline file_t x_open(const char* name){
 	return (file_t) open(name, O_RDWR | O_CREAT, 0666);
 }
 
-static inline size_t x_getsize(file_t fd){
+static inline uint64_t x_getsize(file_t fd){
 	struct stat st;
 	return fstat(fd, &st) ? 0 : st.st_size;
 }
 
-static inline size_t x_read(file_t fd, void* buf, size_t start, size_t count){
+static inline size_t x_read(file_t fd, void* buf, uint64_t start, size_t count){
 	return pread(fd, buf, count, start);
 }
 
-static inline size_t x_write(file_t fd, const void* buf, size_t start, size_t count){
+static inline size_t x_write(file_t fd, const void* buf, uint64_t start, size_t count){
 	return pwrite(fd, buf, count, start);
 }
 
-static inline bool x_setsize(file_t fd, size_t sz){
+static inline bool x_setsize(file_t fd, uint64_t sz){
 	return !ftruncate(fd, sz);
 }
 
+static inline bool x_flush(file_t fd){ return !fsync(fd); }
+
 static inline void x_close(file_t fd){ close(fd); }
 
-static inline void* x_mapfile(file_t fd, size_t off, size_t sz, bool copy){
+static inline void* x_mapfile(file_t fd, uint64_t off, size_t sz, bool copy){
 	void* ptr = mmap(NULL, sz << 16, PROT_READ | PROT_WRITE, copy ? MAP_PRIVATE : MAP_SHARED, fd, off << 16);
 	return ptr == MAP_FAILED ? 0 : ptr;
 }
@@ -310,5 +323,9 @@ static inline char* x_next(folder_list_t dir){
 	return ent ? ent->d_name : 0;
 }
 static inline void x_closedir(folder_list_t dir){ closedir(dir); }
+
+static inline bool x_move(const char* old_name, const char* new_name){
+	return !rename(old_name, new_name);
+}
 
 #endif
