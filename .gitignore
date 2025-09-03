@@ -3,3 +3,4 @@ example/**
 *.o
 lib*.a
 *.lib
+**/.DS_Store
