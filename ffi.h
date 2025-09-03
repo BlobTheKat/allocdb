@@ -9,7 +9,7 @@ void allocdb_flush(AllocDB* db);
 // Calculate the size of a block pointed to by ptr. This would be equal to the size allocated by allocdb_alloc(). The block does not have to be currently allocated for the size to be calculatable. If ptr is obviously invalid, 0 is returned.
 uint64_t allocdb_size_of(uint64_t ptr);
 
-// Allocate a block of at least *size bytes. The actual size allocated is written back to *size. Returns an ID pointing to the allocated block, or -1 on failure.
+// Allocate a block of at least `*size` bytes. The actual size allocated is written back to `*size`. Returns an ID pointing to the allocated block, or -1 on failure.
 uint64_t allocdb_alloc(AllocDB* db, uint64_t* size);
 // Free a block previously allocated with allocdb_alloc(). If ptr is obviously invalid, the function does nothing.
 void allocdb_free(AllocDB* db, uint64_t ptr);

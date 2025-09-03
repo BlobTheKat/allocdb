@@ -11,7 +11,7 @@ class AllocDB{
 	// Flush all internal state to disk. This is automatically called when the AllocDB is destroyed, but can be called manually to ensure data is on disk at a specific point in time. This function is atomic with respect to other write and flush operations, except when it is called by the destructor. You should not destroy the database until all other operations have returned.
 	void flush();
 
-	// Allocate a block of at least 'size' bytes. The actual size allocated is written back to 'size'. Returns an ID pointing to the allocated block, or -1 on failure.
+	// Allocate a block of at least `size` bytes. The actual size allocated is written back to `size`. Returns an ID pointing to the allocated block, or -1 on failure.
 	uint64_t alloc(uint64_t& size);
 	// Free a block previously allocated with alloc(). If ptr is obviously invalid, the function does nothing.
 	void free(uint64_t ptr);
