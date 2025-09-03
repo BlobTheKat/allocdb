@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # test
 clang++ -O1 -std=c++20 test.cpp -o .test && ./.test
 

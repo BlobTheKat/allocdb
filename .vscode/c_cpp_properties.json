@@ -1,0 +1,11 @@
+{
+	"configurations": [{
+		"name": "Default",
+		"includePath": [],
+		"defines": [],
+		"cStandard": "c17",
+		"cppStandard": "c++20",
+		"intelliSenseMode": "${default}"
+	}],
+	"version": 4
+}
