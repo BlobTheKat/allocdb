@@ -2,6 +2,7 @@
 #include <string>
 
 class AllocDB{
+	public:
 	// Construct an AllocDB from path pointing to folder. The folder will be created if it does not exist.
 	AllocDB(std::string folder);
 	// Destruct and flush an AllocDB
