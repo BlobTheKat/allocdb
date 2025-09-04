@@ -105,7 +105,7 @@ public:
 			if(close) delete[] harr;
 		}
 		x_close(f);
-		std::cout << tmp.c_str() << ", " << (prefix+"/frees").c_str() << " -> " << (x_move(tmp.c_str(), (prefix+"/frees").c_str()) ? 0 : GetLastError()) << std::endl;
+		x_move(tmp.c_str(), (prefix+"/frees").c_str());
 	}
 	public: void flush(){ flush(false); }
 	~AllocDB(){ flush(true); }
