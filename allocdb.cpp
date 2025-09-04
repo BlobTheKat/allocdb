@@ -23,6 +23,7 @@ using memory_order = std::memory_order;
 #define ntohll(x) __builtin_bswap64(x)
 #define htonll(x) __builtin_bswap64(x)
 #endif
+#include <string>
 #else
 #define ntohll(x) (x)
 #define htonll(x) (x)
@@ -73,6 +74,7 @@ public:
 			}
 			vec->push_back(v);
 		}
+		x_close(f);
 	}
 	private: void flush(bool close){
 		std::string tmp = prefix+"/frees.tmp";
@@ -103,7 +105,7 @@ public:
 			if(close) delete[] harr;
 		}
 		x_close(f);
-		x_move(tmp.c_str(), (prefix+"/frees").c_str());
+		std::cout << tmp.c_str() << ", " << (prefix+"/frees").c_str() << " -> " << (x_move(tmp.c_str(), (prefix+"/frees").c_str()) ? 0 : GetLastError()) << std::endl;
 	}
 	public: void flush(){ flush(false); }
 	~AllocDB(){ flush(true); }

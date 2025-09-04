@@ -16,7 +16,7 @@ typedef HANDLE file_t;
 static const file_t X_FILE_T_INVALID = (file_t) INVALID_HANDLE_VALUE;
 typedef struct{
 	HANDLE hFind;
-	char* first;
+	_WIN32_FIND_DATAA a;
 } *folder_list_t;
 #else
 #include <unistd.h>
@@ -95,6 +95,7 @@ static const size_t X_PAGE_SIZE = 65536;
 
 #ifdef _WIN32
 #include <malloc.h>
+#include <limits.h>
 
 static inline file_t x_open(const char* name){
 	return (file_t) CreateFileA(name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
@@ -113,8 +114,8 @@ static inline size_t x_read(file_t fd, void* buf, uint64_t start, size_t count){
 	OVERLAPPED overlapped = {0};
 	overlapped.Offset = (DWORD) start;
 	overlapped.OffsetHigh = (DWORD) (start >> 32);
-	char* _buf = buf;
-	#if SIZE_T_MAX > 0xFFFFFFFF
+	char* _buf = (char*) buf;
+	#if SIZE_MAX > 0xFFFFFFFF
 	if(count > 0xFFFFFFFF){
 		// Do not "fix" what you do not understand
 		// Ignorance sees bad code, but fast code is not for the ignorant
@@ -123,13 +124,13 @@ static inline size_t x_read(file_t fd, void* buf, uint64_t start, size_t count){
 		do{
 			DWORD tot = ReadFile(fd, _buf, 0xFFFFF000, &bytesRead, &overlapped) ? bytesRead : 0;
 			if(tot < 0xFFFFF000)
-				return (_buf-buf) + tot;
+				return (_buf-(char*)buf) + tot;
 			_buf += 0xFFFFF000; count -= 0xFFFFF000;
-			size_t b = _buf-buf;
+			size_t b = _buf-(char*)buf;
 			overlapped.Offset = b;
 			overlapped.OffsetHigh = b>>32;
 		}while(count > 0xFFFFFFFF);
-		return (_buf-buf) + (ReadFile(fd, _buf, (DWORD) count, &bytesRead, &overlapped) ? bytesRead) : 0;
+		return (_buf-(char*)buf) + (ReadFile(fd, _buf, (DWORD) count, &bytesRead, &overlapped) ? bytesRead : 0);
 	}
 	#endif
 	return ReadFile(fd, _buf, (DWORD) count, &bytesRead, &overlapped) ? bytesRead : 0;
@@ -140,20 +141,20 @@ static inline size_t x_write(file_t fd, const void* buf, uint64_t start, size_t 
 	OVERLAPPED overlapped = {0};
 	overlapped.Offset = (DWORD) start;
 	overlapped.OffsetHigh = (DWORD) (start >> 32);
-	const char* _buf = buf;
-	#if SIZE_T_MAX > 0xFFFFFFFF
+	const char* _buf = (const char*) buf;
+	#if SIZE_MAX > 0xFFFFFFFF
 	if(count > 0xFFFFFFFF){
 		// See the comment in the x_read() implementation
 		do{
 			DWORD tot = WriteFile(fd, _buf, 0xFFFFF000, &bytesWritten, &overlapped) ? bytesWritten : 0;
 			if(tot < 0xFFFFF000)
-				return (_buf-buf) + tot;
+				return (_buf-(const char*)buf) + tot;
 			_buf += 0xFFFFF000; count -= 0xFFFFF000;
-			size_t b = _buf-buf;
+			size_t b = _buf-(const char*)buf;
 			overlapped.Offset = b;
 			overlapped.OffsetHigh = b>>32;
 		}while(count > 0xFFFFFFFF);
-		return (_buf-buf) + (WriteFile(fd, _buf, (DWORD) count, &bytesWritten, &overlapped) ? bytesWritten : 0);
+		return (_buf-(const char*)buf) + (WriteFile(fd, _buf, (DWORD) count, &bytesWritten, &overlapped) ? bytesWritten : 0);
 	}
 	#endif
 	return WriteFile(fd, _buf, (DWORD) count, &bytesWritten, &overlapped) ? bytesWritten : 0;
@@ -221,29 +222,30 @@ static inline folder_list_t x_opendir(const char* name){
 	else buf = (char*) malloc(len);
 	memcpy(buf, name, len-3);
 	buf[len-3] = '\\'; buf[len-2] = '*'; buf[len-1] = 0;
-	LPWIN32_FIND_DATA a;
-	HANDLE h = FindFirstFileA(buf, &a);
-	if(len >= 256) free(buf);
 	folder_list_t ret = (folder_list_t) malloc(sizeof(folder_list_t));
-	ret.hFind = h; ret.first = h == INVALID_HANDLE_VALUE ? 0 : a.cFileName;
+	HANDLE h = FindFirstFileA(buf, &ret->a);
+	ret->a.cAlternateFileName[0] = 1;
+	if(len >= 256) free(buf);
+	ret->hFind = h;
 	return ret;
 }
 static inline char* x_next(folder_list_t dir){
-	if(dir->first){
-		char* r = dir->first;
-		dir->first = 0;
-		return r;
+	if(dir->a.cAlternateFileName[0]){
+		dir->a.cAlternateFileName[0] = 0;
+		return dir->a.cFileName;
 	}
-	WIN32_FIND_DATA a;
-	return FindNextFileA(dir->hFind, &a) ? a.cFileName : 0;
+	bool success = FindNextFileA(dir->hFind, &dir->a);
+	dir->a.cAlternateFileName[0] = 0;
+	return success ? dir->a.cFileName : 0;
 }
 static inline void x_closedir(folder_list_t dir){
-	FindClose(dir.hFind);
+	FindClose(dir->hFind);
 	free(dir);
 }
 
 static inline bool x_move(const char* old_name, const char* new_name){
-	return MoveFile(old_name, new_name);
+	// MoveFileExA() usually fails to replace a file that is still open
+	return ReplaceFileA(new_name, old_name, 0, 0, 0, 0);
 }
 
 #else
