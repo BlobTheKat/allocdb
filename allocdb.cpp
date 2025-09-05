@@ -48,6 +48,7 @@ class AllocDB{
 	std::string prefix;
 	std::mutex master_lock;
 public:
+	std::atomic<uint64_t> root = 0;
 	AllocDB(std::string folder) : prefix(std::move(folder)){
 		auto info = x_stat(prefix.c_str());
 		if(info.type == X_FILE_NOT_FOUND){
@@ -61,7 +62,7 @@ public:
 		int last = -1;
 		sz >>= 3;
 		std::vector<uint64_t>* vec;
-		for(size_t i = 0; i < sz; i++){
+		for(size_t i = 1; i < sz; i++){
 			uint64_t v = frees[i];
 			int bucket = ntohll(v)&0xFF;
 			if(bucket >= 160) continue;
@@ -74,13 +75,16 @@ public:
 			}
 			vec->push_back(v);
 		}
+		root.store(ntohll(frees[0]), memory_order::relaxed);
 		x_close(f);
 	}
 	private: void flush(bool close){
 		std::string tmp = prefix+"/frees.tmp";
 		std::lock_guard _(master_lock);
 		file_t f = x_open(tmp.c_str());
-		size_t off = 0;
+		uint64_t r = htonll(root.load(memory_order::relaxed));
+		x_write(f, &r, 0, 8);
+		size_t off = 8;
 		if(!close) for(int i = 0; i < 20; i++){
 			Heap* harr = fds[i];
 			if(!harr) continue;
