@@ -47,8 +47,10 @@ class AllocDB{
 	std::atomic<Heap*> fds[20] = {0};
 	std::string prefix;
 	std::mutex master_lock;
+	std::atomic<uint64_t> a_root = 0;
 public:
-	std::atomic<uint64_t> root = 0;
+	uint64_t root(){ return a_root.load(memory_order::relaxed); }
+	void root(uint64_t r){ a_root.store(r, memory_order::relaxed); }
 	AllocDB(std::string folder) : prefix(std::move(folder)){
 		auto info = x_stat(prefix.c_str());
 		if(info.type == X_FILE_NOT_FOUND){
@@ -75,14 +77,14 @@ public:
 			}
 			vec->push_back(v);
 		}
-		root.store(ntohll(frees[0]), memory_order::relaxed);
+		a_root.store(sz ? ntohll(frees[0]) : -1, memory_order::relaxed);
 		x_close(f);
 	}
 	private: void flush(bool close){
 		std::string tmp = prefix+"/frees.tmp";
 		std::lock_guard _(master_lock);
 		file_t f = x_open(tmp.c_str());
-		uint64_t r = htonll(root.load(memory_order::relaxed));
+		uint64_t r = htonll(a_root.load(memory_order::relaxed));
 		x_write(f, &r, 0, 8);
 		size_t off = 8;
 		if(!close) for(int i = 0; i < 20; i++){

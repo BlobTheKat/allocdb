@@ -55,6 +55,10 @@ class AllocDB{
 	// You should not destroy the object until all other operations complete
 	void flush();
 
+	// Get/set the root pointer. The root pointer is a 64-bit value that is not interpreted by AllocDB, but is guaranteed to be persistent across restarts of the database. It can be used by the user to point to some important structure in the database, such as an index or tree root node. Default value is -1
+	uint64_t root();
+	void root(uint64_t r);
+	
 };
 ```
 
