@@ -23,6 +23,7 @@ typedef struct{
 #include <stdbool.h>
 #include <errno.h>
 #include <dirent.h>
+#include <stdint.h>
 typedef int file_t;
 typedef DIR* folder_list_t;
 static const file_t X_FILE_T_INVALID = (file_t) -1;
@@ -304,8 +305,13 @@ static inline x_stat_t x_stat(const char* name){
 	}
 	int a = st.st_mode & S_IFMT;
 	ret.type = a == S_IFREG ? X_FILE_TYPE_FILE : a == S_IFDIR ? X_FILE_TYPE_FOLDER : X_FILE_TYPE_SPECIAL;
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
 	int ms = st.st_mtimespec.tv_nsec/1000000;
 	ret.modified = st.st_mtimespec.tv_sec*1000+ms;
+#else
+	int ms = st.st_mtim.tv_nsec/1000000;
+	ret.modified = st.st_mtim.tv_sec*1000+ms;
+#endif
 	ret.size = st.st_size;
 	return ret;
 }
